@@ -1,113 +1,60 @@
+import cv2
+import numpy as np
 import pygame
-import random
 import math
+from settings import *
+from ball import Ball
+from goal_post import GoalPost
+from paddle import Paddle
 
 # Initialize Pygame
 pygame.init()
-
-# Set up the game window
-WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Round Paddle Pong")
-
-# Colors
-WHITE = (255, 255, 255)
-YELLOW = (255, 255, 0)
-BLUE = (0, 0, 255)
-RED = (255, 0, 0)
-BLACK = (0, 0, 0)
-GREEN = (0, 255, 0)
-
-# Paddle properties
-PADDLE_RADIUS = 30
-PADDLE_SPEED = 12
-
-# Ball properties
-BALL_RADIUS = 10
-BALL_SPEED = 15
-
-# Goal post properties
-GOAL_WIDTH = 10
-GOAL_HEIGHT = 100
 
 # Font
 FONT = pygame.font.Font(None, 36)
 LARGE_FONT = pygame.font.Font(None, 72)
 
-# Game states
-COUNTDOWN = 0
-PLAYING = 1
-SCORE_SPLASH = 2
-GAME_OVER = 3
+SCALE_FACTOR_X = 45 * WIDTH/HEIGHT
+SCALE_FACTOR_Y = 45 * WIDTH/HEIGHT
 
-class Paddle:
-    def __init__(self, x, y, color=BLUE):
-        self.x = x
-        self.y = y
-        self.radius = PADDLE_RADIUS
-        self.speed = PADDLE_SPEED
-        self.color = color
 
-    def move(self, dx, dy):
-        self.x += dx * self.speed
-        self.y += dy * self.speed
-        self.x = max(self.radius, min(self.x, WIDTH - self.radius))
-        self.y = max(self.radius, min(self.y, HEIGHT - self.radius))
+# Set up the game window
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Round Paddle Pong")
 
-    def draw(self):
-        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+def detect_color_circle(frame, color_lower_bound, color_upper_bound):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, color_lower_bound, color_upper_bound)
+    blurred_mask = cv2.GaussianBlur(mask, (9, 9), 2, 2)
+    circles = cv2.HoughCircles(blurred_mask, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
+                               param1=50, param2=30, minRadius=15, maxRadius=100)
 
-class Ball:
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.x = WIDTH // 2
-        self.y = HEIGHT // 2
-        angle = random.uniform(-math.pi/4, math.pi/4)
-        self.dx = BALL_SPEED * math.cos(angle)
-        self.dy = BALL_SPEED * math.sin(angle)
-        if random.choice([True, False]):
-            self.dx = -self.dx
-
-    def move(self):
-        self.x += self.dx
-        self.y += self.dy
-
-        if self.y <= BALL_RADIUS:
-            self.y = BALL_RADIUS
-            self.dy = abs(self.dy)
-        elif self.y >= HEIGHT - BALL_RADIUS:
-            self.y = HEIGHT - BALL_RADIUS
-            self.dy = -abs(self.dy)
-
-        min_dx = 2
-        if abs(self.dx) < min_dx:
-            self.dx = min_dx if self.dx > 0 else -min_dx
-
-    def draw(self):
-        pygame.draw.circle(screen, YELLOW, (int(self.x), int(self.y)), BALL_RADIUS)
-
-class GoalPost:
-    def __init__(self, x, color=BLUE):
-        self.x = x
-        self.y = HEIGHT // 2
-        self.width = GOAL_WIDTH
-        self.height = GOAL_HEIGHT
-        self.color = color
-
-    def draw(self):
-        pygame.draw.rect(screen, self.color, (self.x, self.y - self.height // 2, self.width, self.height))
+    if circles is not None:
+        circles = np.round(circles[0, :]).astype("int")
+        for (x, y, r) in circles:
+            cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
+            cv2.circle(frame, (x, y), 5, (0, 128, 255), -1)
+            cv2.putText(frame, f"Pos: ({x},{y})", (x - 40, y - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            return x, y
+    return None
 
 class Game:
     def __init__(self):
-        self.blue_player = Paddle(50, HEIGHT // 2)
-        self.red_player = Paddle(WIDTH - 50, HEIGHT // 2, RED)
-        self.ball = Ball()
-        self.blue_player_goal = GoalPost(0)
-        self.red_player_goal = GoalPost(WIDTH - GOAL_WIDTH, RED)
+        self.blue_player = Paddle(50, HEIGHT // 2, screen)
+        self.red_player = Paddle(WIDTH - 50, HEIGHT // 2,screen, RED)
+        self.ball = Ball(screen)
+        self.blue_player_goal = GoalPost(0, screen)
+        self.red_player_goal = GoalPost(WIDTH - GOAL_WIDTH,screen, RED)
         self.blue_player_score = 0
         self.red_player_score = 0
+        self.prev_blue_pos = None
+        self.prev_red_pos = None
+        self.prev_blue_pos = None
+        self.prev_red_pos = None
+        self.prev_blue_dx = 0
+        self.prev_blue_dy = 0
+        self.prev_red_dx = 0
+        self.prev_red_dy = 0
         self.state = COUNTDOWN
         self.countdown = 3
         self.countdown_timer = 0
@@ -116,6 +63,7 @@ class Game:
         self.splash_timer = 0
         self.splash_duration = 3 * 1000  # 3 seconds in milliseconds
         self.last_scorer = None
+        self.cap = cv2.VideoCapture(1,cv2.CAP_DSHOW)
 
     def update(self):
         current_time = pygame.time.get_ticks()
@@ -129,11 +77,76 @@ class Game:
                     self.play_timer = current_time
 
         elif self.state == PLAYING:
-            keys = pygame.key.get_pressed()
-            self.blue_player.move(keys[pygame.K_d] - keys[pygame.K_a], keys[pygame.K_s] - keys[pygame.K_w])
-            self.red_player.move(keys[pygame.K_RIGHT] - keys[pygame.K_LEFT], keys[pygame.K_DOWN] - keys[pygame.K_UP])
+            # keys = pygame.key.get_pressed()
 
+            # self.blue_player.move(keys[pygame.K_d] - keys[pygame.K_a], keys[pygame.K_s] - keys[pygame.K_w])
+            # self.red_player.move(keys[pygame.K_RIGHT] - keys[pygame.K_LEFT], keys[pygame.K_DOWN] - keys[pygame.K_UP])
+
+            #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+            ret, frame = self.cap.read()
+            if not ret:
+                print("Error: Failed to capture frame.")
+                return
+            frame = cv2.flip(frame, 1)
+
+            # Detect blue circle
+            blue_pos = detect_color_circle(frame, BLUE_LOWER_BOUND, BLUE_UPPER_BOUND)
+            if blue_pos:
+                if self.prev_blue_pos:
+                    dx = (blue_pos[0] - self.prev_blue_pos[0]) / WIDTH 
+                    dy = (blue_pos[1] - self.prev_blue_pos[1]) / HEIGHT
+                    
+
+                    dx *= SCALE_FACTOR_X 
+                    dy *= SCALE_FACTOR_Y
+                    
+                    # Apply a movement threshold
+                    if abs(dx) > 0.01 or abs(dy) > 0.01:
+                        # Apply smoothing
+                        smoothing_factor = 0.5
+                        smooth_dx = dx * smoothing_factor + self.prev_blue_dx * (1 - smoothing_factor)
+                        smooth_dy = dy * smoothing_factor + self.prev_blue_dy * (1 - smoothing_factor)
+                        
+                        # Apply scaling factor to increase movement
+                        scaling_factor = 2.0
+                        self.blue_player.move(smooth_dx * scaling_factor, smooth_dy * scaling_factor)
+                        
+                        # Update previous deltas
+                        self.prev_blue_dx, self.prev_blue_dy = smooth_dx, smooth_dy
+                
+                self.prev_blue_pos = blue_pos
+
+            # Detect red circle (similar changes as blue circle)
+            red_pos = detect_color_circle(frame, RED_LOWER_BOUND_1, RED_UPPER_BOUND_1)
+            if red_pos is None:
+                red_pos = detect_color_circle(frame, RED_LOWER_BOUND_2, RED_UPPER_BOUND_2)
+            if red_pos:
+                if self.prev_red_pos:
+                    dx = (red_pos[0] - self.prev_red_pos[0]) / WIDTH
+                    dy = (red_pos[1] - self.prev_red_pos[1]) / HEIGHT
+                    
+                    dx *= SCALE_FACTOR_X
+                    dy *= SCALE_FACTOR_Y
+                    
+                    if abs(dx) > 0.01 or abs(dy) > 0.01:
+                        smoothing_factor = 0.5
+                        smooth_dx = dx * smoothing_factor + self.prev_red_dx * (1 - smoothing_factor)
+                        smooth_dy = dy * smoothing_factor + self.prev_red_dy * (1 - smoothing_factor)
+                        
+                        scaling_factor = 2.0
+                        self.red_player.move(smooth_dx * scaling_factor, smooth_dy * scaling_factor)
+                        
+                        self.prev_red_dx, self.prev_red_dy = smooth_dx, smooth_dy
+                
+                self.prev_red_pos = red_pos
+
+            # Display the frame
+            cv2.imshow('Paddle Game', frame)
+            cv2.waitKey(1)
             self.ball.move()
+
+            #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
             for paddle in [self.blue_player, self.red_player]:
                 dx = self.ball.x - paddle.x
