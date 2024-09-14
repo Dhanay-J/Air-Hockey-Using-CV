@@ -1,0 +1,6 @@
+1. Claude . 
+    1.1 create a pong game in python with pygame  . The paddles sholud be round in shape . Score is given only if the player hits the goal post in the vertical central position of the screen of the opponents side.
+    1.2 It's working ! But sometimes the ball gets trapped at the edges.
+    1.3 the paddles should be able to move in any direction (up, down and left and right).
+    1.4 before the restart show a a splash screen of one , two , three . One game should be 30 second (play time only)  . After that the result should be shown (Winner / Draw) and there should be a button to  restart the whole game .
+    1.5 after each score add that splash screen
