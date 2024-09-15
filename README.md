@@ -68,6 +68,7 @@ A custom dataset was created for this project, specifically designed for detecti
 ```bash
 pip install opencv-python
 pip install ultralytics
+pip install pygame
 ```
 
 ## Running the Game
