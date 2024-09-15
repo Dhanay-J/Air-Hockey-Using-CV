@@ -30,11 +30,3 @@ COUNTDOWN = 0
 PLAYING = 1
 SCORE_SPLASH = 2
 GAME_OVER = 3
-
-# Color detection constants
-BLUE_LOWER_BOUND = np.array([100, 150, 50])
-BLUE_UPPER_BOUND = np.array([140, 255, 255])
-RED_LOWER_BOUND_1 = np.array([0, 120, 70])
-RED_UPPER_BOUND_1 = np.array([10, 255, 255])
-RED_LOWER_BOUND_2 = np.array([170, 120, 70])
-RED_UPPER_BOUND_2 = np.array([180, 255, 255])
