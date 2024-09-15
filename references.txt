@@ -1,10 +1,15 @@
-1. Claude
+1. Claude 3.5 Sonnet
     1.1 create a pong game in python with pygame  . The paddles sholud be round in shape . Score is given only if the player hits the goal post in the vertical central position of the screen of the opponents side.
     1.2 It's working ! But sometimes the ball gets trapped at the edges.
     1.3 the paddles should be able to move in any direction (up, down and left and right).
     1.4 before the restart show a a splash screen of one , two , three . One game should be 30 second (play time only)  . After that the result should be shown (Winner / Draw) and there should be a button to  restart the whole game .
     1.5 after each score add that splash screen
-2. ChatGPT
+2. ChatGPT 4o
     1.1 create a function to detect a blue circle and output its position (x,y) in python
     1.2 the video capturing should be done in main loop and the captured image should be passed to the  detect_blue_circle_real_time function and the result should be printed in the main loop
     1.3 invert the video output (that user sees ) horizontally
+1. Youtube
+    1. https://youtu.be/m9fH9OWn8YM
+2. Official Docs
+    1. https://docs.ultralytics.com/quickstart/#use-ultralytics-with-python
+
