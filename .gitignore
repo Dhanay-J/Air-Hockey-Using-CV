@@ -158,8 +158,6 @@ cython_debug/
 data/
 runs/
 yolov8n.*
-*.yaml
-*.pt
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
