@@ -1,7 +1,12 @@
+import os
+os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+
 import cv2
 import numpy as np
 import pygame
 import math
+from collections import deque
+
 from settings import *
 from ball import Ball
 from goal_post import GoalPost
@@ -14,29 +19,79 @@ pygame.init()
 FONT = pygame.font.Font(None, 36)
 LARGE_FONT = pygame.font.Font(None, 72)
 
-SCALE_FACTOR_X = 45 * WIDTH/HEIGHT
-SCALE_FACTOR_Y = 45 * WIDTH/HEIGHT
+
+SCALE_FACTOR_X = 50 * WIDTH/HEIGHT
+SCALE_FACTOR_Y = 50 * HEIGHT/WIDTH
 
 
 # Set up the game window
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Round Paddle Pong")
 
-def detect_color_circle(frame, color_lower_bound, color_upper_bound):
+def detect_color_circle(frame, color_lower_bound, color_upper_bound, position_history:deque):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, color_lower_bound, color_upper_bound)
-    blurred_mask = cv2.GaussianBlur(mask, (9, 9), 2, 2)
+    
+    # Apply morphological operations to reduce noise
+    kernel = np.ones((5,5), np.uint8)
+    mask = cv2.erode(mask, kernel, iterations=1)
+    mask = cv2.dilate(mask, kernel, iterations=1)
+    
+    blurred_mask = cv2.GaussianBlur(mask, (5, 5), 2)
+    
     circles = cv2.HoughCircles(blurred_mask, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
-                               param1=50, param2=30, minRadius=15, maxRadius=100)
-
+                               param1=50, param2=30, minRadius=10, maxRadius=100)
+    
     if circles is not None:
         circles = np.round(circles[0, :]).astype("int")
-        for (x, y, r) in circles:
-            cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
-            cv2.circle(frame, (x, y), 5, (0, 128, 255), -1)
-            cv2.putText(frame, f"Pos: ({x},{y})", (x - 40, y - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            return x, y
+        if len(circles) > 0:
+            # Get the circle with the highest intensity
+            max_intensity = 0
+            best_circle = None
+            for (x, y, r) in circles:
+                intensity = np.sum(blurred_mask[y-r:y+r, x-r:x+r])
+                if intensity > max_intensity:
+                    max_intensity = intensity
+                    best_circle = (x, y, r)
+            
+            if best_circle is not None:
+                x, y, r = best_circle
+                
+                # Add the new position to the history
+                position_history.append((x, y))
+                if len(position_history) > 5:  # Keep only the last 5 positions
+                    position_history.popleft()
+                
+                # Calculate the average position
+                avg_x = int(sum(pos[0] for pos in position_history) / len(position_history))
+                avg_y = int(sum(pos[1] for pos in position_history) / len(position_history))
+                
+                # Draw the circle and position on the frame
+                cv2.circle(frame, (avg_x, avg_y), r, (0, 255, 0), 4)
+                cv2.circle(frame, (avg_x, avg_y), 5, (0, 128, 255), -1)
+                cv2.putText(frame, f"Pos: ({avg_x},{avg_y})", (avg_x - 40, avg_y - 40), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
+                return avg_x, avg_y
+    
     return None
+
+
+# def detect_color_circle(frame, color_lower_bound, color_upper_bound):
+#     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+#     mask = cv2.inRange(hsv, color_lower_bound, color_upper_bound)
+#     blurred_mask = cv2.GaussianBlur(mask, (9, 9), 2, 2)
+#     circles = cv2.HoughCircles(blurred_mask, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100,
+#                                param1=50, param2=30, minRadius=15, maxRadius=100)
+
+#     if circles is not None:
+#         circles = np.round(circles[0, :]).astype("int")
+#         for (x, y, r) in circles:
+#             cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
+#             cv2.circle(frame, (x, y), 5, (0, 128, 255), -1)
+#             cv2.putText(frame, f"Pos: ({x},{y})", (x - 40, y - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+#             return x, y
+#     return None
 
 class Game:
     def __init__(self):
@@ -63,7 +118,10 @@ class Game:
         self.splash_timer = 0
         self.splash_duration = 3 * 1000  # 3 seconds in milliseconds
         self.last_scorer = None
-        self.cap = cv2.VideoCapture(1,cv2.CAP_DSHOW)
+        self.blue_position_history = deque(maxlen=5)
+        self.red_position_history = deque(maxlen=5)
+        
+        self.cap = cv2.VideoCapture(0,cv2.CAP_DSHOW)
 
     def update(self):
         current_time = pygame.time.get_ticks()
@@ -91,7 +149,7 @@ class Game:
             frame = cv2.flip(frame, 1)
 
             # Detect blue circle
-            blue_pos = detect_color_circle(frame, BLUE_LOWER_BOUND, BLUE_UPPER_BOUND)
+            blue_pos = detect_color_circle(frame, BLUE_LOWER_BOUND, BLUE_UPPER_BOUND, self.blue_position_history)
             if blue_pos:
                 if self.prev_blue_pos:
                     dx = (blue_pos[0] - self.prev_blue_pos[0]) / WIDTH 
@@ -118,9 +176,9 @@ class Game:
                 self.prev_blue_pos = blue_pos
 
             # Detect red circle (similar changes as blue circle)
-            red_pos = detect_color_circle(frame, RED_LOWER_BOUND_1, RED_UPPER_BOUND_1)
+            red_pos = detect_color_circle(frame, RED_LOWER_BOUND_1, RED_UPPER_BOUND_1, self.red_position_history)
             if red_pos is None:
-                red_pos = detect_color_circle(frame, RED_LOWER_BOUND_2, RED_UPPER_BOUND_2)
+                red_pos = detect_color_circle(frame, RED_LOWER_BOUND_2, RED_UPPER_BOUND_2, self.red_position_history)
             if red_pos:
                 if self.prev_red_pos:
                     dx = (red_pos[0] - self.prev_red_pos[0]) / WIDTH
@@ -230,6 +288,8 @@ class Game:
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.MOUSEBUTTONDOWN and self.state == GAME_OVER:
+                self.cap.release()
+                cv2.destroyAllWindows()
                 self.__init__()  # Reset the game
         return True
 
