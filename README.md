@@ -104,3 +104,5 @@ Make sure your webcam is connected and properly set up to detect the paddles and
 
 Replace `"path/to/your/model.pt"` with the actual path to your custom model.
 
+
+
